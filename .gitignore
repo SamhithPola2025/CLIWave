@@ -9,4 +9,4 @@ test
 *.o
 *.exe
 cliwave
-audiotest
+audiotestmakefile
