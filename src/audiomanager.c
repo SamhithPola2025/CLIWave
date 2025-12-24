@@ -1,6 +1,7 @@
 #include "dependencies/miniaudio.h"
 
 #include <stdio.h>
+#include <stdbool.h>
 #include <stdlib.h>
 #include <unistd.h>
 #include <time.h>
@@ -104,6 +105,8 @@ ma_result stop_recording()
     return MA_SUCCESS;
 }
 
+
+/*
 int main()
 {
     ma_result result = start_recording(
@@ -127,3 +130,4 @@ int main()
     printf("Done! File saved as recording.wav\n");
     return 0;
 }
+*/
