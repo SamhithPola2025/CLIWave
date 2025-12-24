@@ -1,3 +1,4 @@
+// doing it this way for organization purposes, realistically this file doesnt need to exist.
 #pragma once
 
 #include <ncurses.h>

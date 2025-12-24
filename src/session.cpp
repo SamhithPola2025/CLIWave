@@ -1,4 +1,5 @@
 #include "cliwave.hpp"
+#include "audiomanager.h"
 
 void showNewSessionScreen() {
     clear();
@@ -94,6 +95,7 @@ void showDAWInterface(char* sessionName, char* sessionLength, char* bufferLength
     int selectedTrack = 0;
     bool isPlaying = false;
     bool isRecording = false;
+    int takeCounter = 1;
     int maxTime = atoi(sessionLength);
     int timelineWidth = maxTime * 5;
     
@@ -187,12 +189,32 @@ void showDAWInterface(char* sessionName, char* sessionLength, char* bufferLength
                     break;
                 case 'r':
                 case 'R':
-                    isRecording = !isRecording;
+                    if (!isRecording) {
+                        // Build output filename
+                        std::string fname = std::string("recordings/") + std::string(sessionName) +
+                                            "_track" + std::to_string(selectedTrack + 1) +
+                                            "_take" + std::to_string(takeCounter) + ".wav";
+                        // Start recording: 16-bit PCM, stereo, 44100 Hz
+                        ma_result res = start_recording(fname.c_str(), ma_format_s16, 2, 44100);
+                        if (res == MA_SUCCESS) {
+                            isRecording = true;
+                            takeCounter++;
+                            // Show brief status
+                            move(0, 0);
+                            printw("Recording -> %s\n", fname.c_str());
+                        } else {
+                            move(0, 0);
+                            printw("Recording failed (code %d)\n", res);
+                        }
+                    }
                     break;
                 case 's':
                 case 'S':
                     isPlaying = false;
-                    isRecording = false;
+                    if (isRecording) {
+                        stop_recording();
+                        isRecording = false;
+                    }
                     timelinePos = 0;
                     break;
                 case KEY_UP:
@@ -216,6 +238,10 @@ void showDAWInterface(char* sessionName, char* sessionLength, char* bufferLength
                     break;
                 case 'q':
                 case 'Q':
+                    if (isRecording) {
+                        stop_recording();
+                        isRecording = false;
+                    }
                     nodelay(stdscr, FALSE);
                     return;
             }
