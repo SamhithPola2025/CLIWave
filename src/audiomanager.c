@@ -105,29 +105,79 @@ ma_result stop_recording()
     return MA_SUCCESS;
 }
 
+typedef struct {
+    ma_device device;
+    ma_decoder decoder;
+    bool isPlaying;
+    bool isInitialized;
+} AudioPlayer;
 
-/*
-int main()
+static AudioPlayer g_player = {0};
+
+void playback_callback(ma_device* pDevice, void* pOutput, const void* pInput, uint32_t frameCount)
 {
-    ma_result result = start_recording(
-        "recording.wav",
-        ma_format_s16,
-        2,
-        44100
-    );
-    
-    if (result != MA_SUCCESS) {
-        return -1;
+    (void)pDevice;
+    (void)pInput;
+    if (!g_player.isInitialized) return;
+    ma_decoder_read_pcm_frames(&g_player.decoder, pOutput, frameCount, NULL);
+}
+
+ma_result stop_playback()
+{
+    if (!g_player.isInitialized) {
+        return MA_INVALID_OPERATION;
     }
 
-    // test:
-    
-    printf("Recording for 5 seconds...\n");
-//    ma_sleep(5000);
-    sleep_ms(5000); 
-    stop_recording();
-    
-    printf("Done! File saved as recording.wav\n");
-    return 0;
+    g_player.isPlaying = false;
+
+    ma_device_stop(&g_player.device);
+    ma_device_uninit(&g_player.device);
+    ma_decoder_uninit(&g_player.decoder);
+
+    g_player.isInitialized = false;
+    printf("Playback stopped.\n");
+    return MA_SUCCESS;
 }
-*/
+
+ma_result start_playback(const char* inputFilePath)
+{
+    ma_result result;
+
+    if (g_player.isInitialized) {
+        stop_playback();
+    }
+
+    result = ma_decoder_init_file(inputFilePath, NULL, &g_player.decoder);
+    if (result != MA_SUCCESS) {
+        printf("Failed to init decoder: %d\n", result);
+        return result;
+    }
+
+    ma_device_config deviceConfig = ma_device_config_init(ma_device_type_playback);
+    deviceConfig.playback.format   = g_player.decoder.outputFormat;
+    deviceConfig.playback.channels = g_player.decoder.outputChannels;
+    deviceConfig.sampleRate        = g_player.decoder.outputSampleRate;
+    deviceConfig.dataCallback      = playback_callback;
+    deviceConfig.pUserData         = &g_player;
+
+    result = ma_device_init(NULL, &deviceConfig, &g_player.device);
+    if (result != MA_SUCCESS) {
+        printf("Failed to initialize playback device: %d\n", result);
+        ma_decoder_uninit(&g_player.decoder);
+        return result;
+    }
+
+    result = ma_device_start(&g_player.device);
+    if (result != MA_SUCCESS) {
+        printf("Failed to start playback device: %d\n", result);
+        ma_device_uninit(&g_player.device);
+        ma_decoder_uninit(&g_player.decoder);
+        return result;
+    }
+
+    g_player.isPlaying = true;
+    g_player.isInitialized = true;
+
+    printf("Playback started: %s\n", inputFilePath);
+    return MA_SUCCESS;
+}

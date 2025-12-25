@@ -98,9 +98,19 @@ void showDAWInterface(char* sessionName, char* sessionLength, char* bufferLength
     int takeCounter = 1;
     int maxTime = atoi(sessionLength);
     int timelineWidth = maxTime * 5;
-    
+
+    struct Segment { int startPos; int length; std::string filename; };
+    std::vector<std::vector<Segment>> trackSegments(numTracks);
+
+    int recStartPos = -1;
+    int recTrackIndex = -1;
+    std::string recFile;
+    int lastPlayedPos = -1;
+
     nodelay(stdscr, TRUE);
-    
+
+    std::vector<std::vector<char>> trackData(numTracks, std::vector<char>(timelineWidth, ' '));
+
     while (true) {
         clear();
         std::string headerLine(60, '=');
@@ -160,7 +170,7 @@ void showDAWInterface(char* sessionName, char* sessionLength, char* bufferLength
             
             printw("|");
             for (int j = 0; j < timelineWidth; j++) {
-                printw(" ");
+                printw("%c", trackData[i][j]);
             }
             printw("|\n");
         }
@@ -186,6 +196,9 @@ void showDAWInterface(char* sessionName, char* sessionLength, char* bufferLength
             switch(ch) {
                 case ' ':
                     isPlaying = !isPlaying;
+                    if (!isPlaying) {
+                        stop_playback();
+                    }
                     break;
                 case 'r':
                 case 'R':
@@ -197,6 +210,9 @@ void showDAWInterface(char* sessionName, char* sessionLength, char* bufferLength
                         if (res == MA_SUCCESS) {
                             isRecording = true;
                             takeCounter++;
+                            recStartPos = timelinePos;
+                            recTrackIndex = selectedTrack;
+                            recFile = fname;
                             move(0, 0);
                             printw("Recording -> %s\n", fname.c_str());
                         } else {
@@ -208,9 +224,17 @@ void showDAWInterface(char* sessionName, char* sessionLength, char* bufferLength
                 case 's':
                 case 'S':
                     isPlaying = false;
+                    stop_playback();
                     if (isRecording) {
                         stop_recording();
                         isRecording = false;
+                        if (recStartPos >= 0 && recTrackIndex >= 0) {
+                            Segment seg{recStartPos, timelinePos - recStartPos, recFile};
+                            trackSegments[recTrackIndex].push_back(seg);
+                            recStartPos = -1;
+                            recTrackIndex = -1;
+                            recFile.clear();
+                        }
                     }
                     timelinePos = 0;
                     break;
@@ -227,28 +251,67 @@ void showDAWInterface(char* sessionName, char* sessionLength, char* bufferLength
                     if (timelinePos < timelineWidth - 1) timelinePos++;
                     break;
                 case '+':
-                    if (numTracks < 8) numTracks++;
+                    if (numTracks < 8) {
+                        numTracks++;
+                        trackData.push_back(std::vector<char>(timelineWidth, ' '));
+                        trackSegments.push_back(std::vector<Segment>());
+                    }
                     break;
                 case '-':
-                    if (numTracks > 1) numTracks--;
-                    if (selectedTrack >= numTracks) selectedTrack = numTracks - 1;
+                    if (numTracks > 1) {
+                        numTracks--;
+                        if (!trackData.empty()) trackData.pop_back();
+                        if (!trackSegments.empty()) trackSegments.pop_back();
+                        if (selectedTrack >= numTracks) selectedTrack = numTracks - 1;
+                    }
                     break;
                 case 'q':
                 case 'Q':
                     if (isRecording) {
                         stop_recording();
                         isRecording = false;
+                        if (recStartPos >= 0 && recTrackIndex >= 0) {
+                            Segment seg{recStartPos, timelinePos - recStartPos, recFile};
+                            trackSegments[recTrackIndex].push_back(seg);
+                        }
                     }
+                    stop_playback();
                     nodelay(stdscr, FALSE);
                     return;
             }
         }
         
-        if (isPlaying) {
+        // recording with timeline logic (WIP)
+
+        if (isPlaying || isRecording) {
             napms(200);
             if (timelinePos < timelineWidth - 1) {
+                if (isRecording) {
+                    trackData[selectedTrack][timelinePos] = 'x';
+                }
+                if (isPlaying && lastPlayedPos != timelinePos) {
+                    for (const auto& seg : trackSegments[selectedTrack]) {
+                        if (seg.startPos == timelinePos) {
+                            start_playback(seg.filename.c_str());
+                            break;
+                        }
+                    }
+                    lastPlayedPos = timelinePos;
+                }
                 timelinePos++;
             } else {
+                if (isRecording) {
+                    stop_recording();
+                    isRecording = false;
+                    if (recStartPos >= 0 && recTrackIndex >= 0) {
+                        Segment seg{recStartPos, timelinePos - recStartPos, recFile};
+                        trackSegments[recTrackIndex].push_back(seg);
+                        recStartPos = -1;
+                        recTrackIndex = -1;
+                        recFile.clear();
+                    }
+                }
+                stop_playback();
                 isPlaying = false;
             }
         } else {
